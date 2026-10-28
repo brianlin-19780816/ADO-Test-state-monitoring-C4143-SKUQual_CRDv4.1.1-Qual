@@ -4,11 +4,12 @@ Azure DevOps Rack Test Status Dashboard 提供 Tampermonkey userscript 與原生
 
 ## 目前版本
 
-- Dashboard：[C4143-DV-SKUQual_CRD411-Dashboard.user.js](./C4143-DV-SKUQual_CRD411-Dashboard.user.js)（固定安裝網址，腳本內版本 v1.11.10）
+- Dashboard：[C4143-DV-SKUQual_CRD411-Dashboard.user.js](./C4143-DV-SKUQual_CRD411-Dashboard.user.js)（固定安裝網址，腳本內版本 v1.11.11）
 - 開發與維護文件：[C4143-DVScale-Dashboard-HANDOFF.md](./C4143-DVScale-Dashboard-HANDOFF.md)
 - Azure DevOps Extension：[azure-devops-extension](./azure-devops-extension)；可安裝 VSIX 位於 `release/C4143-DVScale-Dashboard-Extension.vsix`
 - Azure DevOps organization：`https://azurecsi.visualstudio.com`
 - Azure DevOps project：`Dev`
+- Azure DevOps Test Plan：`[C4143] PSE DV SKUQual Test Plan`（`planId=3962679`、`suiteId=3962680`）
 
 ## 多專案 Query 選單
 
