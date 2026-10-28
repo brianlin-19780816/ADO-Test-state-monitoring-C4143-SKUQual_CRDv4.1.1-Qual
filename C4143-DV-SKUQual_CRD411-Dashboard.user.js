@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 SKUQual CRDv4.1.1 Qual Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.11.10
+// @version      1.11.11
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/ADO-Test-state-monitoring-C4143-SKUQual_CRDv4.1.1-Qual
 // @supportURL   https://github.com/brianlin-19780816/ADO-Test-state-monitoring-C4143-SKUQual_CRDv4.1.1-Qual/issues
@@ -57,7 +57,7 @@
   var isDashboardEntry = !!extensionContext || location.hash.toLowerCase().indexOf("skuqualcrd411") >= 0;
   if (!isDashboardEntry) return;
   var D = {};
-  D.VERSION = '1.11.10';
+  D.VERSION = '1.11.11';
   D.CFG = {"org":"https://azurecsi.visualstudio.com","orgName":"azurecsi","project":"Dev","sourceType":"testPlan","planId":3962679,"suiteId":3962680,"queryId":"","queryUrl":"https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3962679&suiteId=3962680","testResultDays":28};
   if (extensionContext) {
     D.CFG.org = String(extensionContext.org || D.CFG.org).replace(/\/+$/, '');
@@ -68,7 +68,7 @@
       : D.CFG.org + '/' + encodeURIComponent(D.CFG.project) + '/_queries/query/' + D.CFG.queryId + '/';
   }
   D.DEFAULT_QUERIES = [
-    { name: 'C4143_SKUQual_CRDv4.1.1 Qual', org: 'https://azurecsi.visualstudio.com', orgName: 'azurecsi', project: 'Dev', sourceType: 'testPlan', planId: 3962679, suiteId: 3962680, queryId: '', queryUrl: 'https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3962679&suiteId=3962680', builtin: true },
+    { name: '[C4143] PSE DV SKUQual Test Plan', org: 'https://azurecsi.visualstudio.com', orgName: 'azurecsi', project: 'Dev', sourceType: 'testPlan', planId: 3962679, suiteId: 3962680, queryId: '', queryUrl: 'https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3962679&suiteId=3962680', builtin: true },
     { name: '[EchoFalls][C4142][PSE] EVT - Scale Testing', org: 'https://azurecsi.visualstudio.com', orgName: 'azurecsi', project: 'Dev', queryId: '6e06c765-2ff5-43c4-80c6-e78438eea6d9', queryUrl: 'https://azurecsi.visualstudio.com/Dev/_queries/query/6e06c765-2ff5-43c4-80c6-e78438eea6d9/', builtin: true }
   ];
   D.STATE_COLORS = {"Not Started":"#94a3b8","New":"#60a5fa","Proposed":"#f5b544","Design":"#a78bfa","In Progress":"#818cf8","Active":"#818cf8","Ready":"#38bdf8","Committed":"#22d3ee","Passed":"#34d399","Closed":"#2dd4bf","Done":"#2dd4bf","Completed":"#2dd4bf","Failed":"#f87171","Blocked":"#fb7185","Removed":"#9ca3af","Resolved":"#22d3ee","Paused":"#fbbf24"};
@@ -255,30 +255,39 @@
     if (D.CFG.sourceType === 'testPlan') {
       var planPath = base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/testplan/Plans/' + encodeURIComponent(D.CFG.planId);
       var suiteTreeResponse = await D.apiFetch(planPath + '/suites?asTreeView=true&api-version=7.1');
-      var suiteById = {}, parentById = {}, suiteContainers = [];
-      function indexSuite(suite, parent) {
+      var suiteById = {};
+      function indexSuite(suite) {
         if (!suite) return;
         suiteById[String(suite.id)] = suite;
-        if (parent) parentById[String(suite.id)] = parent;
-        if ((suite.children || []).length) suiteContainers.push(suite);
-        (suite.children || []).forEach(function (child) { indexSuite(child, suite); });
+        (suite.children || []).forEach(indexSuite);
       }
-      var suiteRoots = suiteTreeResponse.value || [];
-      suiteRoots.forEach(function (suite) { indexSuite(suite, null); });
+      (suiteTreeResponse.value || []).forEach(indexSuite);
       var selectedSuite = suiteById[String(D.CFG.suiteId)] || null;
-      var selectedParent = selectedSuite && parentById[String(selectedSuite.id)];
+      if (!selectedSuite) {
+        throw new Error('Selected Test Suite ' + D.CFG.suiteId + ' was not found in Test Plan ' + D.CFG.planId + '.');
+      }
       var configSuites = [];
-      if (selectedSuite && (selectedSuite.children || []).length === 3) {
+      if ((selectedSuite.children || []).length === 3) {
         configSuites = selectedSuite.children.slice();
-      } else if (selectedParent && (selectedParent.children || []).length === 3) {
-        configSuites = selectedParent.children.slice();
       } else {
-        var threeSuiteContainer = suiteContainers.filter(function (suite) { return (suite.children || []).length === 3; })[0] || null;
-        if (threeSuiteContainer) configSuites = threeSuiteContainer.children.slice();
-        else if (suiteRoots.length === 3) configSuites = suiteRoots.slice();
+        var scopedContainers = [];
+        function findThreeConfigContainers(suite) {
+          (suite.children || []).forEach(function (child) {
+            if ((child.children || []).length === 3) scopedContainers.push(child);
+            findThreeConfigContainers(child);
+          });
+        }
+        findThreeConfigContainers(selectedSuite);
+        if (scopedContainers.length === 1) {
+          configSuites = scopedContainers[0].children.slice();
+        } else if (!scopedContainers.length) {
+          throw new Error('Expected one 3-Config container inside selected Test Suite ' + D.CFG.suiteId + ', but none was found.');
+        } else {
+          throw new Error('Expected one 3-Config container inside selected Test Suite ' + D.CFG.suiteId + ', but found ' + scopedContainers.length + '.');
+        }
       }
       if (configSuites.length !== 3) {
-        throw new Error('Expected 3 Test Suites in the selected Test Plan branch, but found ' + configSuites.length + '.');
+        throw new Error('Expected 3 Config Test Suites inside selected Test Suite ' + D.CFG.suiteId + ', but found ' + configSuites.length + '.');
       }
       suiteGroups = {};
       function normalizePointOutcome(value) {
@@ -1590,10 +1599,11 @@
       var cards = D.el('div', 'cards');
       if (def.kind === 'ov') {
         refs.cRacks = D.card(D.groupPlural().toUpperCase(), D.S.racks.length, '#38bdf8');
-        refs.cCase = D.card(D.isTestPlanSource() ? 'TOTAL TEST POINTS' : 'TOTAL TEST CASES', '-', '#34d399');
+        refs.cCase = D.card('TOTAL TEST CASES', '-', '#34d399');
         refs.cPass = D.card(D.isTestPlanSource() ? 'PASSED POINTS / RATE' : 'PASS CASES / RATE', '-', '#2dd4bf');
         refs.cFail = D.card(D.isTestPlanSource() ? 'FAILED POINTS / RATE' : 'FAIL CASES (BLOCKED) / RATE', '-', '#fb7185');
         refs.cProgress = D.card(D.isTestPlanSource() ? 'NOT RUN POINTS' : 'IN PROGRESS CASES', 0, '#818cf8');
+        refs.cCase.title = 'Unique Test Case IDs across all tracked Config suites.';
         refs.cPass.title = D.isTestPlanSource() ? 'Passed Test Points reported by Azure Test Plans.' : 'Closed Test Cases are counted as Pass. Rate denominator: Test Cases in the selected time range.';
         refs.cFail.title = D.isTestPlanSource() ? 'Failed Test Points reported by Azure Test Plans.' : 'Blocked Test Cases are counted as Fail. Rate denominator: Test Cases in the selected time range.';
         refs.cProgress.title = D.isTestPlanSource() ? 'Test Points whose outcome is Not run.' : 'Test Cases whose current Azure DevOps State is In Progress.';
@@ -1679,7 +1689,7 @@
           inProgress: pointCounts['Not run'] || 0,
           passRate: D.rate(pointCounts.Passed || 0, pointTotal), failRate: D.rate(pointCounts.Failed || 0, pointTotal)
         } : D.outcomeSummary(f);
-        p.cCase._val.textContent = pointCounts ? pointTotal : uniqueAllCases.length;
+        p.cCase._val.textContent = uniqueAllCases.length;
         p.cPass._val.textContent = D.outcomeValue(outcomes.pass, outcomes.passRate);
         p.cFail._val.textContent = D.outcomeValue(outcomes.fail, outcomes.failRate);
         p.cProgress._val.textContent = outcomes.inProgress;
